@@ -59,6 +59,36 @@ CLAUDE.md                Working notes: design decisions, verification results, 
   machine without Signal Processing Toolbox, so the one thing that toolbox would normally provide
   (`bilinear`) is implemented from scratch in `bilinearTransform.m`.
 
+## GUI app
+
+`app/NoiseAnalyzerApp.m` is an interactive app for analyzing a raw sound-pressure recording
+end-to-end: load data, configure settings, analyze, view plots, export a report + CSVs.
+
+```matlab
+addpath('matlab'); addpath('app');
+app = NoiseAnalyzerApp;
+```
+
+- **Load Data** — CSV/TXT (with a `time`/`pressure` header, two unlabeled numeric columns, or a
+  single pressure-only column) or MAT files. Pressure-only data needs a sample rate from Settings.
+- **Settings** — plain-text `key = value` panel in the app (sample rate override, reference
+  pressure, Fast/Slow time-weighting); load/save it as a `.txt` config file with the buttons
+  below it — same format either way.
+- **Analyze** — computes LAeq/LCeq/LZeq, LAFmax/LASmax, LA10/LA50/LA90 percentile levels, and an
+  FFT-based octave-band spectrum estimate (explicitly labeled as an estimate — the actual
+  IEC 61260-1 band-pass filterbank isn't built yet, see Roadmap).
+- **Plots** — waveform, A-weighted level vs. time, octave-band spectrum, and a summary table, each
+  in its own tab.
+- **Export Report + CSV** — writes `<name>_report.txt` (human-readable summary),
+  `<name>_timeseries.csv` (time, Fast A-weighted level), and `<name>_summary.csv` (metrics table)
+  to the chosen output folder.
+
+Written as a `uifigure`-based `classdef` app (the same object model App Designer itself generates)
+rather than a packaged `.mlapp` binary, so it stays readable and diffable in source control. All
+the actual computation lives in `noiseanalyzer.*` functions — the app class is a thin UI wrapper
+and was verified by testing those functions directly (see `CLAUDE.md`), plus confirming the app
+itself instantiates and its plotting/table code paths run without error.
+
 ## Usage
 
 ```matlab
@@ -87,11 +117,13 @@ LAT   = noiseanalyzer.aWeightedSoundPressureLevel(Lp, bands);
 
 ## Roadmap
 
-- [ ] Actual octave-band filterbank (band-pass filtering, not just band-frequency math)
+- [ ] Actual octave-band filterbank (true IEC 61260-1 band-pass filtering — the app's spectrum
+      tab currently uses an FFT-based estimate instead, clearly labeled as such)
 - [ ] ISO 1996-2:2017 tonal-adjustment / environmental-noise assessment logic
 - [ ] ISO 9613-2 clause 7.5 (reflections) and Annex A (foliage/industrial-site/housing terms)
 - [ ] Reconcile ISO 9613-2 ground-effect terms against the 2024 edition
-- [ ] `uihtml`-based GUI: live level meter + octave-band spectrum display
+- [x] GUI app for analyzing a recorded signal — `app/NoiseAnalyzerApp.m`
+- [ ] Live/real-time level meter (the current GUI analyzes a loaded recording, not a live feed)
 
 ## License
 
