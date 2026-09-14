@@ -240,12 +240,58 @@ several practically-important deviations from the base method (cap ground factor
 This is a real gap if 2024-edition accuracy or wind-turbine-specific guidance matters for actual
 use, not just a documentation nicety.
 
+## ISO 9613-2 module updated to the 2024 edition (2026-09-14)
+
+Ported the confirmed 2024 changes from `reference/iso_9613_2_2024_notes.md` into
+`matlab/+noiseanalyzer/`:
+
+- `groundGeometryFactor.m` (new) — Kgeo, eq.(13).
+- `groundAttenuation.m` — rewritten to the eq.(11)-(13) non-linear combination (was the 1996
+  eq.(9) plain sum).
+- `groundReflectionDirectivity.m` — rewritten to eq.(15) (`10*lg(1+Kgeo)`), algebraically
+  identical to the old form, just refactored to share Kgeo.
+- `groundFactorRegionAverage.m` (new) — eq.(10), length-weighted G for non-uniform regions.
+- `barrierAttenuation.m` — rewritten to eqs.(16)-(21): new zmin floor (eq.19, `Dz=0` below it),
+  reworked Dz (eq.18) and Kmet (eq.21, bracket extent double-checked against a 300dpi crop) to
+  generalize beyond two diffraction edges.
+- `windTurbineGroundFactor.m`, `windTurbineBarrierAttenuation.m`, `concaveGroundCorrection.m`
+  (new) — Annex D.3-D.5 wind-turbine-specific caps/corrections, as standalone helpers the caller
+  applies on top of the base functions (not baked into groundAttenuation/barrierAttenuation
+  themselves, since they're wind-turbine-specific, not universal).
+- Equation-number citations updated throughout (2024 renumbered several clauses vs. 1996, e.g.
+  atmospheric absorption eq.8→9, met correction eq.21/22→31/32) even where the formula itself
+  didn't change.
+
+**Verification:** re-ran the full propagation smoke-test suite plus new checks specific to the
+2024 changes:
+- `groundAttenuation` **exactly reduces to the old 1996 plain-sum formula** in the large-dp limit
+  (Kgeo→1) — confirmed numerically (-5.901 dB both ways, hard ground, dp=5000m) — and correctly
+  pulls attenuation toward 0 dB in the short-range case the 2024 revision was specifically added
+  to fix (dp=2m vs hs=hr=10m: -0.04 to 0.00 dB, vs. what would've been a larger 1996 value).
+- `groundReflectionDirectivity`'s refactored eq.(15) matches a direct evaluation of the old eq.(11)
+  fraction to 6 decimal places (2.989654 both ways) — confirms the refactor is a pure notational
+  change, not a formula change.
+- `barrierAttenuation`: positive/increasing-with-frequency for a blocked path (1.93-16.63 dB);
+  exactly 0 for an unblocked path (z below zmin); the `Agr`-subtraction case (eq.16) matches
+  `max(Dz-Agr,0)` by hand-calculation exactly; `windTurbineBarrierAttenuation` caps correctly.
+- Full point-source assembly re-run against the same scenario as the original 1996 test
+  (100 m, hs=4m, hr=1.5m): 2024 gives LAT(DW)=57.34 dB vs. 1996's 57.35 dB — nearly identical, as
+  expected, since this mid-range scenario isn't the short-range edge case the 2024 formula
+  targets; confirms the update doesn't silently break normal-range results.
+- `groundFactorRegionAverage`, `windTurbineGroundFactor`, `concaveGroundCorrection` all match
+  hand-calculated expected values exactly.
+
+**Still not ported** (see README roadmap): clause 7.4.2 (alternative multi-edge path-length
+method), clause 7.5 beyond the cylindrical-reflection term (single/multi-order flat-surface
+reflections), and whether the 1996 20 dB/25 dB barrier-attenuation caps still apply in 2024 —
+`barrierAttenuation.m` applies no cap, documented as an open question in its own docstring.
+
 ## Next moves
 
-1. ISO 9613-2 core method (clauses 6-8) is done and verified — see above. Still open: clause 7.5
-   (reflections/image sources) and Annex A (foliage/industrial-site/housing) if needed; and
-   reconciling the 1996 equations against 2024's ground-factor changes if exact current-edition
-   compliance matters.
+1. ISO 9613-2 core method (clauses 6-8) is done, verified, and now targets the **current 2024
+   edition** — see above. Still open: clause 7.4.2 (multi-edge path-length alternative), clause
+   7.5 (reflections/image sources beyond cylindrical surfaces) and Annex A
+   (foliage/industrial-site/housing) if needed.
 2. Octave/third-octave **band-pass filterbank** itself (actual filtering into bands, not just the
    band-frequency math) — IEC 61260-1 specifies filter performance requirements (§5) but
    python-acoustics doesn't implement filter design either; need to pick a design (e.g. Butterworth

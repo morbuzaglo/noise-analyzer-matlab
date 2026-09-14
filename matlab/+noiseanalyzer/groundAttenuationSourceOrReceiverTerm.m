@@ -1,7 +1,9 @@
 function A = groundAttenuationSourceOrReceiverTerm(freqHz, G, h, dp)
 %GROUNDATTENUATIONSOURCEORRECEIVERTERM As or Ar contribution to ground attenuation for one
-%   octave band, ISO 9613-2:1996 Table 3. Call with (freq,Gs,hs,dp) for As, (freq,Gr,hr,dp) for
-%   Ar. G: hard ground = 0, porous = 1, mixed = fraction porous.
+%   octave band, ISO 9613-2:2024 Table 3 (byte-for-byte identical to ISO 9613-2:1996 Table 3 --
+%   only how As/Ar/Am combine into Agr changed in 2024, see groundAttenuation). Call with
+%   (freq,Gs,hs,dp) for As, (freq,Gr,hr,dp) for Ar. G: hard ground = 0, porous = 1, mixed =
+%   fraction porous.
 arguments
     freqHz (1,1) double
     G (1,1) double

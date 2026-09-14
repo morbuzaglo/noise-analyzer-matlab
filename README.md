@@ -16,7 +16,9 @@ octave-band filterbank not yet built. See [Roadmap](#roadmap).
   edges, and band-index lookup, per **IEC 61260-1:2014**.
 - **Outdoor sound propagation** — geometrical divergence, atmospheric absorption, ground effect
   (both the general per-band method and the simplified A-weighted alternative), barrier/screening
-  diffraction (single and double), and meteorological correction, per **ISO 9613-2:1996**.
+  diffraction (single and multi-edge), and meteorological correction, per **ISO 9613-2:2024**
+  (current edition) — plus its informative Annex D deviations specifically for wind-turbine
+  sources (ground-factor cap, barrier-attenuation cap, concave-terrain correction).
 
 ## Why this exists
 
@@ -34,13 +36,18 @@ numbers wherever the standard publishes any — not just "it runs without errori
 |---|---|---|
 | IEC 61672-1 | 2013 (current) | Sound level meters: A/C/Z weighting, Fast/Slow, Leq |
 | IEC 61260-1 | 2014 (current) | Octave/fractional-octave band filters: frequencies, edges |
-| ISO 9613-2 | 1996 (current is 2024 — see note below) | Outdoor sound propagation |
+| ISO 9613-2 | 2024 (current) | Outdoor sound propagation, incl. Annex D (wind turbines) |
 | ISO 9613-1 | 1993 (current) | Atmospheric absorption (used inside the 9613-2 module) |
 
-> **Edition note:** ISO 9613-2:1996 was used because that's the edition we had direct access to
-> the full text of. The current edition, ISO 9613-2:2024, reportedly revised ground-factor
-> determination specifically. The 1996 method implemented here is complete and internally
-> consistent on its own; reconciling it against the 2024 changes is open (see Roadmap).
+> **Edition history:** the propagation module originally targeted ISO 9613-2:1996 (the only full
+> text available at the time) and was updated to the current 2024 edition once that text became
+> available. The 2024 revision is a genuine formula change, not just relabeling — most notably a
+> non-linear ground-attenuation combination (`groundAttenuation.m`) replacing the 1996 plain sum,
+> and a reworked barrier-diffraction formula (`barrierAttenuation.m`) with a new minimum-path-
+> difference floor. See `reference/iso_9613_2_2024_notes.md` for the full eq.-by-eq. comparison.
+> Not ported: 7.4.2's alternative multi-edge path-length method, 7.5's reflection clauses beyond
+> the cylindrical-surface term, and whether 2024 kept the 1996 barrier-attenuation dB caps
+> (unconfirmed — not applied in `barrierAttenuation.m`, see its docstring).
 
 ## Project structure
 
@@ -126,8 +133,11 @@ LAT   = noiseanalyzer.aWeightedSoundPressureLevel(Lp, bands);
 - [ ] Actual octave-band filterbank (true IEC 61260-1 band-pass filtering — the app's spectrum
       tab currently uses an FFT-based estimate instead, clearly labeled as such)
 - [ ] ISO 1996-2:2017 tonal-adjustment / environmental-noise assessment logic
-- [ ] ISO 9613-2 clause 7.5 (reflections) and Annex A (foliage/industrial-site/housing terms)
-- [ ] Reconcile ISO 9613-2 ground-effect terms against the 2024 edition
+- [ ] ISO 9613-2 clause 7.5 (reflections beyond the cylindrical-surface term) and Annex A
+      (foliage/industrial-site/housing terms)
+- [ ] ISO 9613-2 clause 7.4.2 (alternative path-length method for >2 diffraction edges) and
+      confirming whether the 1996 20 dB/25 dB barrier-attenuation caps still apply in 2024
+- [x] Update ISO 9613-2 ground-effect and barrier-diffraction formulas to the 2024 edition
 - [x] GUI app for analyzing a recorded signal — `app/NoiseAnalyzerApp.m`
 - [ ] Live/real-time level meter (the current GUI analyzes a loaded recording, not a live feed)
 
