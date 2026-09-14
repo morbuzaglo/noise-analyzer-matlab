@@ -1,0 +1,17 @@
+# Copyrighted ISO standard text — not ours to redistribute (see reference/README.md)
+reference/iso_9613_2_1996.pdf
+reference/iso_9613_2_1996.txt
+
+# MATLAB
+*.asv
+*.m~
+*.mex*
+*.mlappinstall
+*.mltbx
+slprj/
+codegen/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
