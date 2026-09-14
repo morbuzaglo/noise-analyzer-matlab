@@ -89,6 +89,12 @@ the actual computation lives in `noiseanalyzer.*` functions — the app class is
 and was verified by testing those functions directly (see `CLAUDE.md`), plus confirming the app
 itself instantiates and its plotting/table code paths run without error.
 
+## Try it
+
+`examples/` has two synthetic, precisely level-calibrated recordings to load into the app —
+including a 94 dB SPL calibration tone to sanity-check the install — plus the expected analysis
+output for each. See `examples/README.md`.
+
 ## Usage
 
 ```matlab

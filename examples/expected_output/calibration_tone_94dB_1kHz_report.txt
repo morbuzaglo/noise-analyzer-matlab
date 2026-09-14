@@ -1,0 +1,27 @@
+Noise Analyzer Report
+Generated: 14-Sep-2026 18:27:37
+Source file: calibration_tone_94dB_1kHz.csv
+
+Sample rate: 48000.000 Hz
+Duration: 2.000 s (96000 samples)
+
+LAeq = 94.00 dB
+LCeq = 94.00 dB
+LZeq = 94.00 dB (unweighted)
+
+LAFmax = 94.01 dB (max Fast-weighted A level)
+LASmax = 93.37 dB (max Slow-weighted A level)
+
+LA10 = 94.01 dB (exceeded 10% of the time)
+LA50 = 94.00 dB (exceeded 50% of the time)
+LA90 = 93.02 dB (exceeded 90% of the time -- background level)
+
+Octave-band levels (FFT-based estimate -- NOT certified IEC 61260-1 filtering):
+      63 Hz : -190.58 dB
+     125 Hz : -180.84 dB
+     250 Hz : -170.93 dB
+     500 Hz : -172.56 dB
+    1000 Hz :   94.00 dB
+    2000 Hz : -168.97 dB
+    4000 Hz : -162.53 dB
+    8000 Hz : -159.50 dB

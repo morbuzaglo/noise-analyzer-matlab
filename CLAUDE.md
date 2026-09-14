@@ -226,11 +226,19 @@ verified line-by-line diff):
   structure as 1996 (general + simplified methods) — whether the actual formulas within changed
   (the ground-factor-determination change mentioned in earlier web research) isn't confirmed here.
 
-**Open decision for you:** if the ISO 9613-2 module should track the current (2024) edition
-precisely, someone needs to either (a) manually transcribe/share the specific new formulas from
-this PDF (since I'm treating bulk extraction from a DRM-restricted file as off-limits), or (b) we
-accept the already-built 1996-based module as the implementation and note the edition gap in
-documentation (already done — see README "Edition note"). Not resolved either way yet.
+**Update 2026-09-14:** you replaced the DRM-locked PDF with an unencrypted derivative (your own
+print-permission export, `pdfinfo` now shows `Encrypted: no`) — treated the same as the 1996 scan
+from there. Read and transcribed the sections most likely to matter (ground effect, screening,
+met correction, and the new wind-turbine annex) into
+`reference/iso_9613_2_2024_notes.md`. Headline finding: **the ground-attenuation combination
+formula changed substantively** (no longer a plain sum of As+Ar+Am — now a non-linear formula with
+a new Kgeo geometric term), the barrier-diffraction formula also changed (not just relabeled), and
+there's a whole new informative Annex D specifically about wind-turbine noise prediction with
+several practically-important deviations from the base method (cap ground factor at G=0.5, not
+1.0; cap barrier attenuation at 3 dB; new concave-terrain correction). **Not yet ported into
+`matlab/+noiseanalyzer/`** — the currently-built module still implements the 1996 formulas only.
+This is a real gap if 2024-edition accuracy or wind-turbine-specific guidance matters for actual
+use, not just a documentation nicety.
 
 ## Next moves
 
