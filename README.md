@@ -69,39 +69,60 @@ CLAUDE.md                Working notes: design decisions, verification results, 
 
 ## GUI app
 
-`app/NoiseAnalyzerApp.m` is an interactive app for analyzing a raw sound-pressure recording
-end-to-end: load data, configure settings, analyze, view plots, export a report + CSVs.
+`app/NoiseAnalyzerApp.m` is an interactive app for analyzing sound-pressure recordings from one or
+more microphones at known distances from a source — load, trim, listen, analyze, compare across
+distance, export.
 
 ```matlab
 addpath('matlab'); addpath('app');
 app = NoiseAnalyzerApp;
 ```
 
-- **Load Data** — CSV/TXT (with a `time`/`pressure` header, two unlabeled numeric columns, or a
-  single pressure-only column) or MAT files. Pressure-only data needs a sample rate from Settings.
-- **Settings** — plain-text `key = value` panel in the app (sample rate override, reference
-  pressure, Fast/Slow time-weighting); load/save it as a `.txt` config file with the buttons
-  below it — same format either way.
-- **Analyze** — computes LAeq/LCeq/LZeq, LAFmax/LASmax, LA10/LA50/LA90 percentile levels, and an
-  FFT-based octave-band spectrum estimate (explicitly labeled as an estimate — the actual
-  IEC 61260-1 band-pass filterbank isn't built yet, see Roadmap).
-- **Plots** — waveform, A-weighted level vs. time, octave-band spectrum, and a summary table, each
-  in its own tab.
-- **Export Report + CSV** — writes `<name>_report.txt` (human-readable summary),
-  `<name>_timeseries.csv` (time, Fast A-weighted level), and `<name>_summary.csv` (metrics table)
-  to the chosen output folder.
+- **Add Microphone(s)...** — pick one or more CSV/TXT (with a `time`/`pressure` header, two
+  unlabeled numeric columns, or a single pressure-only column) or MAT files at once; each becomes
+  a row in the microphone table. Pressure-only files need a sample rate from Settings.
+- **Microphone table** — one row per loaded recording: editable **Distance (m)** from the sound
+  source and an **Include** checkbox (controls which mics count toward the aggregate — e.g. drop
+  a mic that clipped or had wind noise without deleting it). Click a row to view/trim/hear that
+  recording on the right.
+- **Trim the time range** — numeric Start/End (s) fields under the waveform plot, applied via
+  "Apply Trim"; the kept range is highlighted directly on the waveform (full recording in gray,
+  selection in blue, boundaries marked). *(Not a mouse-draggable region — Image Processing
+  Toolbox, which provides that, isn't available on the machine this was built on; numeric fields
+  plus a highlighted plot were the toolbox-free alternative.)*
+- **Play / Stop** — listen to the trimmed segment of the selected recording (normalized for
+  playback; this is not SPL-calibrated audio, just a way to check "is this junk or signal").
+- **Settings table** — a fixed, visible list (sample rate override, reference pressure, Fast/Slow
+  time-weighting, aggregation method) rather than a free-text block, so it's clear how many
+  settings there are; load/save as a `.csv` config file.
+- **Analyze All** — computes LAeq/LCeq/LZeq, LAFmax/LASmax, LA10/LA50/LA90 and an FFT-based
+  octave-band spectrum estimate (labeled as an estimate — the true IEC 61260-1 filterbank isn't
+  built yet, see Roadmap) for every loaded microphone's trimmed segment. A status lamp shows
+  busy (amber) vs. done (green) so you know when it's safe to continue.
+- **Distance Analysis tab** — plot any metric vs. distance across included microphones, with the
+  aggregate (energetic mean, or max) drawn as a reference line — this is the actual point of the
+  multi-mic support: seeing how the measured level falls off with distance.
+- **Export Summary + CSVs** — one combined `noise_analysis_summary.csv` (every microphone's
+  metrics plus distance and include-flag, with an aggregate row appended) and a per-microphone
+  `<label>_timeseries.csv` (Fast A-weighted level vs. time).
 
 Written as a `uifigure`-based `classdef` app (the same object model App Designer itself generates)
 rather than a packaged `.mlapp` binary, so it stays readable and diffable in source control. All
-the actual computation lives in `noiseanalyzer.*` functions — the app class is a thin UI wrapper
-and was verified by testing those functions directly (see `CLAUDE.md`), plus confirming the app
-itself instantiates and its plotting/table code paths run without error.
+the actual computation lives in `noiseanalyzer.*` functions — the app class is a thin UI wrapper,
+verified by testing those functions directly plus a full synthetic multi-microphone integration
+test (see `CLAUDE.md`), confirming the app itself instantiates, and exercising the newer/riskier
+graphics and table code paths (styled `xline`/`yline`, `scatter`, `uilamp`, CSV-backed tables)
+standalone against realistic data.
+
+For a single-recording, non-comparative workflow, the underlying `noiseanalyzer.writeAnalysisReport`
+/ `writeSummaryCsv` / plain-text-settings functions from the app's first version are still present
+and independently tested, just not wired into this multi-microphone GUI.
 
 ## Try it
 
-`examples/` has two synthetic, precisely level-calibrated recordings to load into the app —
-including a 94 dB SPL calibration tone to sanity-check the install — plus the expected analysis
-output for each. See `examples/README.md`.
+`examples/` has two synthetic, precisely level-calibrated recordings to load into the app (as two
+separate microphones, or one at a time) — including a 94 dB SPL calibration tone to sanity-check
+the install — plus the expected analysis output for each. See `examples/README.md`.
 
 ## Usage
 
@@ -146,7 +167,12 @@ LAT   = noiseanalyzer.aWeightedSoundPressureLevel(Lp, bands);
       foliage/industrial-site/housing (partial — see above), Annex B (chimney-stack directivity),
       Annex C (wind-distribution-based meteorological correction)
 - [x] GUI app for analyzing a recorded signal — `app/NoiseAnalyzerApp.m`
+- [x] Multi-microphone support: distance tracking, include/exclude, mean/max aggregation,
+      level-vs-distance plot, time-range trimming, playback, busy/done status, CSV settings
+      and output
 - [ ] Live/real-time level meter (the current GUI analyzes a loaded recording, not a live feed)
+- [ ] Mouse-draggable trim selection (needs Image Processing Toolbox, not available here — see
+      the GUI app section above for the numeric-field alternative actually used)
 
 ## License
 

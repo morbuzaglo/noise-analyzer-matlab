@@ -1,0 +1,6 @@
+# Noise Analyzer settings -- edit here, or load/save as a .txt file
+SampleRateHz =
+# ^ leave blank to auto-detect from a time column in the loaded data file
+ReferencePressurePa = 2e-5
+TimeWeighting = Fast
+# TimeWeighting: Fast or Slow

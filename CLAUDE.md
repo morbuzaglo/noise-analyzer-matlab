@@ -343,6 +343,74 @@ eq.22/23 default barrier method + `combineBarrierDiffractionPaths` into a top-le
 function (they exist as building blocks but nothing currently calls them together end-to-end for
 a multi-edge/lateral-diffraction scenario).
 
+## App rebuilt for multi-microphone distance analysis (2026-09-15)
+
+Per your feedback on the first GUI version, `app/NoiseAnalyzerApp.m` was substantially reworked
+(not incrementally patched — the data model changed from "one loaded recording" to "N
+microphones, each with a distance and include/exclude flag", which touches nearly every part of
+the class). New engine functions: `aggregateLevels.m` (energetic mean or max across mics — mean
+is a power-domain average, not an arithmetic mean of dB values, since that's the physically
+correct way to combine sound levels) and `writeMultiMicSummaryCsv.m` (per-mic rows + one
+aggregate row, CSV).
+
+**What changed in the app, mapped to your asks:**
+- "hear the recording" -> Play/Stop buttons (`audioplayer`, normalized, plays the *trimmed*
+  segment of the currently selected mic).
+- "choose the relevant time-range... preferably in the plot itself" -> numeric Start/End (s)
+  fields + Apply, with the kept range highlighted on the waveform plot (full recording in gray,
+  selection in blue, boundaries marked with red dashed lines). **Not mouse-draggable** — Image
+  Processing Toolbox (`drawrectangle`/`images.roi.Rectangle`) isn't installed on this machine (per
+  `ver`, confirmed again before building this); implementing a fully custom toolbox-free
+  click-drag handler was judged not worth the added complexity/risk vs. numeric fields + visual
+  highlight, which satisfies "in the plot" without literally requiring drag. Flagged as a
+  known limitation, not hidden.
+- "lightbulb for busy/loading vs done" -> `uilamp` component (amber while loading/analyzing/
+  exporting, green when idle/done), with an accompanying status text label.
+- "not clear how many settings, maybe a table" + "config as csv not txt" -> Settings are now a
+  fixed 4-row `uitable` (SampleRateHz, ReferencePressurePa, TimeWeighting, AggregationMethod)
+  instead of a free-text block, load/save as `.csv`.
+- "output as .csv" -> primary export is now `noise_analysis_summary.csv` (all mics + aggregate
+  row); per-mic time-series CSVs still written too. (The original single-file `.txt` report /
+  `writeSummaryCsv` functions from the first app version are untouched and still independently
+  tested, just not called by this GUI anymore.)
+- "several microphones... distance... which to include... mean/max" -> the core of the rework:
+  microphone table (Label/Distance/Include/Status/quick-LAeq), Analyze All processes every loaded
+  mic's trimmed segment, a new **Distance Analysis** tab plots any chosen metric vs. distance for
+  included mics with the aggregate drawn as a reference line, aggregation method (mean/max) is a
+  Settings-table entry.
+
+**Verification:**
+- `checkcode`: zero issues on the rewritten app file.
+- App instantiates cleanly (valid, visible `UIFigure`); `MicTable`/`SettingsTable` initialize with
+  correct default data and sizes.
+- Exercised the specific new/risky graphics and data patterns standalone against realistic data
+  (not just "it compiles"): styled `xline` calls (the exact `Color` Name-Value pattern used for
+  trim boundaries), `scatter`+`yline` with a formatted label (the distance-vs-metric plot),
+  `uilamp` color transitions, table-backed settings round-tripped through both the in-memory
+  parse path and a full CSV save/load cycle (byte-for-byte match after reload), and `uitable`
+  population with the exact column types the app uses.
+- **Full synthetic multi-microphone integration test**: 3 simulated mics at 10/20/40 m with
+  calibrated levels stepped 6 dB apart (mimicking real distance attenuation), run through the
+  actual `analyzeRecording` → results-table → `aggregateLevels` → `writeMultiMicSummaryCsv` chain.
+  The 6 dB spacing between mics came through exactly (71.76/65.76/59.76 dB — offset from the
+  rough 75/69/63 target is the A-weighting curve's value at the test tone's 500 Hz, correctly
+  applied, not a bug); excluding the farthest mic correctly dropped it from both the "mean" and
+  "max" aggregates but not from the exported table; the exported CSV had the right row count and
+  an aggregate row matching a hand-recomputed energetic mean exactly.
+- **Two real bugs caught and fixed during this verification pass** (both in `aggregateLevels`/
+  `writeMultiMicSummaryCsv`, written just before the app): (1) `writeMultiMicSummaryCsv`'s
+  `arguments` block had an optional parameter before a required one, which MATLAB rejects outright
+  — reordered. (2) an initial test miscalculated what "energetic mean of two equal values" should
+  be (wrongly expected it to add like a sum); re-derivation confirmed the function was already
+  correct (mean of two identical levels must equal that same level, not the level+3dB you'd get
+  from *summing* two sources) — no code change needed there, just a corrected understanding.
+
+**Not verified:** actual interactive use (multi-file `uigetfile`, table cell clicks/edits, mouse
+button pushes, live playback) — same limitation as the first app version, needs a human at the
+machine. The building blocks each callback depends on (data loading, analysis, aggregation, the
+specific graphics/table calls used) are all independently verified above; the callback wiring
+itself follows the same pattern already proven to work in the first app version.
+
 ## Next moves
 
 1. ISO 9613-2 core method (clauses 6-8) is done, verified, and now targets the **current 2024

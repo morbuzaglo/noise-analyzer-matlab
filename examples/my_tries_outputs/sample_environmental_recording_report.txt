@@ -1,0 +1,27 @@
+Noise Analyzer Report
+Generated: 15-Sep-2026 00:22:16
+Source file: C:\Users\morde\OneDrive - Technion\AI Code Projects\noise-analyzer-matlab\examples\sample_environmental_recording.csv
+
+Sample rate: 24000.000 Hz
+Duration: 12.000 s (288000 samples)
+
+LAeq = 65.04 dB
+LCeq = 63.90 dB
+LZeq = 66.91 dB (unweighted)
+
+LAFmax = 72.03 dB (max Fast-weighted A level)
+LASmax = 70.51 dB (max Slow-weighted A level)
+
+LA10 = 70.53 dB (exceeded 10% of the time)
+LA50 = 60.50 dB (exceeded 50% of the time)
+LA90 = 50.01 dB (exceeded 90% of the time -- background level)
+
+Octave-band levels (FFT-based estimate -- NOT certified IEC 61260-1 filtering):
+      63 Hz :   42.90 dB
+     125 Hz :   45.69 dB
+     250 Hz :   48.69 dB
+     500 Hz :   51.48 dB
+    1000 Hz :   54.68 dB
+    2000 Hz :   57.63 dB
+    4000 Hz :   60.58 dB
+    8000 Hz :   63.64 dB
