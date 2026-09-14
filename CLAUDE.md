@@ -195,6 +195,43 @@ verified without needing to drive the actual UI:
 - **Not verified:** actual interactive use (clicking through Load Data → Analyze → Export with a
   real file dialog) — that needs a human at the machine. Worth doing before relying on it.
 
+## ISO 9613-2:2024 (current edition) — obtained but NOT transcribed (2026-09-14)
+
+You added `reference/standard_iso_9613-2_2024.pdf` (BS ISO 9613-2:2024, the British Standards
+Institution's adoption, 56 pp.). **Handled differently from the 1996 exhibit PDF**: this file is
+DRM-encrypted (`pdfinfo` reports RC4 encryption with `copy:no` explicitly set — print is allowed,
+text/content extraction is not). That's a stronger, more explicit restriction than the 1996
+scan's plain copyright notice (no DRM there) — extracting/transcribing this one's content would
+mean circumventing an actual technical protection measure, not just reproducing copyrighted text.
+So: rendered a few pages to *view* them (viewing/printing is permitted; that's not the restricted
+action) to understand structure, but did **not** do the same full equation-by-equation
+transcription done for the 1996 edition. It's excluded from git the same way (`reference/*.pdf`).
+
+**What's structurally new/changed vs. 1996** (from the table of contents + a light skim — not a
+verified line-by-line diff):
+- **7.4 Screening** expanded from one unified method to four subsections: general method,
+  an alternative path-length-difference method for one edge *or more parallel edges* (1996 only
+  had single/double diffraction), lateral diffraction around vertical edges, and a section on
+  combining vertical+lateral diffraction with limitations.
+- **7.5 Reflections** expanded from two parts to four: general, single reflection at a flat
+  surface, **multi-reflection up to higher orders (new — 1996 only covered single reflection)**,
+  and reflections at cylindrical surfaces (was a table footnote in 1996, now its own subsection).
+- **Three new informative annexes**: Annex B (directivity correction for chimney stacks), Annex C
+  (meteorological correction dependency on angular wind distribution), and **Annex D — calculation
+  of sound pressure levels caused by wind turbines**. Annex D is notable given the original PDF
+  you sent (the one that turned out to be the 1996 standard) came from a South Dakota electric
+  utility PUC docket — if this project ends up analyzing wind-turbine noise specifically, Annex D
+  is likely the most directly relevant new content in the 2024 edition.
+- 7.1/7.2 (divergence, atmospheric absorption) and 7.3 (ground effect) keep the same subsection
+  structure as 1996 (general + simplified methods) — whether the actual formulas within changed
+  (the ground-factor-determination change mentioned in earlier web research) isn't confirmed here.
+
+**Open decision for you:** if the ISO 9613-2 module should track the current (2024) edition
+precisely, someone needs to either (a) manually transcribe/share the specific new formulas from
+this PDF (since I'm treating bulk extraction from a DRM-restricted file as off-limits), or (b) we
+accept the already-built 1996-based module as the implementation and note the edition gap in
+documentation (already done — see README "Edition note"). Not resolved either way yet.
+
 ## Next moves
 
 1. ISO 9613-2 core method (clauses 6-8) is done and verified — see above. Still open: clause 7.5
