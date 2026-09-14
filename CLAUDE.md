@@ -286,6 +286,63 @@ method), clause 7.5 beyond the cylindrical-reflection term (single/multi-order f
 reflections), and whether the 1996 20 dB/25 dB barrier-attenuation caps still apply in 2024 —
 `barrierAttenuation.m` applies no cap, documented as an open question in its own docstring.
 
+## ISO 9613-2:2024 — full transcription and implementation (2026-09-14, follow-up pass)
+
+Per your "transcribe all and continue," read the remaining clauses/annexes not covered in the
+first update pass (7.4.2-7.4.4, 7.5, clause 9, Annexes A/B/C — Annex D was already done) and
+implemented what's tractable. `reference/iso_9613_2_2024_notes.md` now covers the whole standard.
+
+**New functions:**
+- `pathLengthDifferenceOverTop.m` / `pathLengthDifferenceGrazing.m` (eq.22/23, the default 7.4.1
+  method) and `pathLengthDifferenceAlternative.m` (eq.24, the 7.4.2 method — refactored out of
+  `barrierAttenuation.m`, which still uses this one internally; eq.22/23 exist but aren't wired
+  into `barrierAttenuation.m` yet, see README roadmap).
+- `combineBarrierDiffractionPaths.m` (eq.25) — combines top+lateral diffraction paths.
+- **Barrier caps restored**: confirmed in 7.4.4 that the 1996 20 dB (single) / 25 dB (double
+  diffraction) caps are unchanged in 2024 — re-added to `barrierAttenuation.m`.
+- Reflections (7.5, all new to this package): `reflectionEffectiveLength.m` (eq.27),
+  `reflectionSurfaceSizeCriterion.m` (eq.26), `imageSourceLevel.m` (eq.28),
+  `multiReflectionImageSourceLevel.m` (eq.29, new capability in 2024 — 1996 had no multi-order
+  reflection), `cylindricalReflectionAttenuation.m` (eq.30).
+- Annex A: `foliageAttenuation.m` (Table A.1, unchanged from 1996), `industrialSiteAttenuation.m`
+  (Table A.7, unchanged from 1996), `housingAttenuation.m` (eq.A.4/A.5 — **Ahous,2 term not
+  implemented**, its 2024 formula wasn't found in the reviewed pages, flagged in the function's
+  own docstring).
+- Annex B (new in 2024): `chimneyRadiationAngle.m` (eq.B.1), `chimneyKa.m` (eq.B.3),
+  `chimneyDirectivityCorrection.m` (Table B.1, 2D-interpolated with the standard's extension/
+  clamping rules — one table cell, theta=120/ka=6.3, read as "-77" in the source, corrected to
+  -7.7 as a presumed transcription artifact, flagged in the docstring).
+- Annex C (new in 2024): `windDirectivityDwd.m` (eq.C.2), `meteorologicalCorrectionFromWindSamples.m`
+  (eq.C.6 — derives C0 directly from raw wind-direction samples, no pre-binned wind rose needed).
+
+**Verification:** all new functions checked against hand-calculated expected values (exact
+matches) plus targeted consistency checks:
+- `pathLengthDifferenceOverTop` (eq.22) and `pathLengthDifferenceAlternative` (eq.24) agree
+  exactly when the lateral offset a=0 (both gave z=5.5 for the same test geometry) — the two
+  methods should coincide in that degenerate case, and they do.
+- `combineBarrierDiffractionPaths`: **caught and fixed a real bug during verification** — my
+  first implementation defaulted "path not relevant" to `Abar=0`, but the standard's own rule
+  ("if a ray path is not relevant, the corresponding summand in the bracket is 0") actually
+  requires `Abar=Inf` for that path (so its exponential summand 10^(-0.1*Inf)=0), not 0. Fixed
+  and verified: combining a single real path with two Inf placeholders now exactly reproduces
+  that path's own value, as it must.
+- `chimneyDirectivityCorrection`: exact match at a table grid point (theta=45,ka=5.0 -> 3.4 dB
+  exactly); clamping rules verified (ka<1 -> 0; ka=100 clamped == ka=32; theta=10 clamped ==
+  theta=30).
+- Table-lookup functions (foliage/industrial/housing) all match hand-calculated values exactly,
+  including cap behavior (200m foliage cap, 10dB industrial/housing caps).
+- Wind-directivity functions verified internally consistent (an always-unfavorable-wind scenario
+  gives C0=10dB, matching Dwd's own value for that case exactly) — initial test-comment guesses
+  about which angle convention meant "upwind" vs "downwind" were wrong, but re-derivation
+  confirmed the transcribed formula's behavior is self-consistent, not a code bug.
+- `checkcode` (MATLAB's static analyzer): zero issues across all 20 new/modified files.
+
+**Still not implemented** (see README roadmap): the detailed forestry-parameter foliage method
+(Annex A.2.3 — needs real forestry survey data as input, narrow applicability), and wiring the
+eq.22/23 default barrier method + `combineBarrierDiffractionPaths` into a top-level orchestration
+function (they exist as building blocks but nothing currently calls them together end-to-end for
+a multi-edge/lateral-diffraction scenario).
+
 ## Next moves
 
 1. ISO 9613-2 core method (clauses 6-8) is done, verified, and now targets the **current 2024

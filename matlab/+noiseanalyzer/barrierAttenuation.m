@@ -16,11 +16,15 @@ function Abar = barrierAttenuation(freqHz, dss, dsr, a, d, e, Agr, C2)
 %   (eq.19), and reworking the Kmet meteorological-correction formula (eq.21) to generalize
 %   beyond two edges. See reference/iso_9613_2_2024_notes.md for the eq.-by-eq. comparison.
 %
-%   Not implemented: the 1996 edition capped Dz at 20 dB (single diffraction) / 25 dB (double
-%   diffraction); whether the 2024 edition kept an equivalent cap (likely in 7.4.4, "combining
-%   vertical and lateral diffractions and limitations") was not confirmed while transcribing this
-%   -- no cap is applied here. Check the standard directly before relying on this for very large
-%   barrier attenuations.
+%   z is computed via pathLengthDifferenceAlternative (7.4.2's eq.24, the "alternative method").
+%   The default/general 7.4.1 method (eq.22/23, a simpler linear z with no separate lateral "a"
+%   term) is available separately as pathLengthDifferenceOverTop/pathLengthDifferenceGrazing if
+%   preferred for a given geometry -- pass its z into this function's z-dependent internals
+%   directly if needed (not currently parameterized as a z-override; recompute Dz by hand for
+%   that path if required).
+%
+%   Dz is capped at 20 dB for single diffraction (e=0) and 25 dB for multiple diffraction (e>0)
+%   per 7.4.4 -- confirmed unchanged from ISO 9613-2:1996 (same values, same wording).
 arguments
     freqHz double
     dss (1,1) double
@@ -31,11 +35,7 @@ arguments
     Agr double = 0
     C2 (1,1) double = 20
 end
-if e == 0
-    z = sqrt((dss + dsr)^2 + a^2) - d;
-else
-    z = sqrt((dss + dsr + e)^2 + a^2) - d;
-end
+z = noiseanalyzer.pathLengthDifferenceAlternative(dss, dsr, e, a, d);
 
 lambda = 340 ./ freqHz;
 if e == 0
@@ -53,6 +53,12 @@ if any(above(:))
     dMin = min(dss, dsr);
     Kmet = exp(-(1/2000) * sqrt((dMax + e) .* dMin .* d ./ (2*(z - zmin(above)))));
     Dz(above) = 10*log10(1 + (2 + C2./lambda(above)) .* C3(above) .* z .* Kmet);
+end
+
+if e > 0
+    Dz = min(Dz, 25);
+else
+    Dz = min(Dz, 20);
 end
 
 if Agr > 0
