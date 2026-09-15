@@ -32,3 +32,9 @@ figures from this package's own analysis): LAeq ≈ 65 dB, LAFmax ≈ 72 dB (the
 The `.txt` report and summary `.csv` this package's own `analyzeRecording` /
 `octaveBandSpectrumFFT` produce for each file above — generated the same way the app itself would,
 so you can compare your own run's numbers against these directly.
+
+## `multi_mic_experiment/`
+
+A full **8-microphone synthetic experiment** (several mics at the same radius, several at
+different radii) for trying out the Distance Analysis tab's source-power/ground-factor fitting
+feature — see `multi_mic_experiment/README.md` for the ground truth and step-by-step usage.

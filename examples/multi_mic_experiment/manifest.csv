@@ -1,0 +1,9 @@
+File,Label,Distance_m,TargetLAeq_dB
+mic01_10m_A.csv,mic01_10m_A,9.8,76.34
+mic02_10m_B.csv,mic02_10m_B,10.3,76.16
+mic03_25m_A.csv,mic03_25m_A,24.5,69.53
+mic04_25m_B.csv,mic04_25m_B,25.6,67.36
+mic05_50m.csv,mic05_50m,50.0,61.55
+mic06_100m_A.csv,mic06_100m_A,98.0,55.59
+mic07_100m_B.csv,mic07_100m_B,103.0,53.92
+mic08_200m.csv,mic08_200m,200.0,48.34

@@ -152,6 +152,11 @@ and independently tested, just not wired into this multi-microphone GUI.
 separate microphones, or one at a time) — including a 94 dB SPL calibration tone to sanity-check
 the install — plus the expected analysis output for each. See `examples/README.md`.
 
+For the source-power/ground-factor fitting feature specifically, `examples/multi_mic_experiment/`
+has a full synthetic 8-microphone experiment (several mics per radius, several radii) with a known
+ground-truth source power level and ground factor to fit against and check — see
+`examples/multi_mic_experiment/README.md`.
+
 ## Usage
 
 ```matlab
