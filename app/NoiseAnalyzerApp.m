@@ -72,7 +72,23 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
         DistanceTab                    matlab.ui.container.Tab
         DistanceGrid                      matlab.ui.container.GridLayout
         DistanceMetricDropDown              matlab.ui.control.DropDown
+        PropagationPanel                    matlab.ui.container.Panel
+        PropagationGrid                       matlab.ui.container.GridLayout
+        TemperatureField                          matlab.ui.control.NumericEditField
+        HumidityField                              matlab.ui.control.NumericEditField
+        PressureField                              matlab.ui.control.NumericEditField
+        SourceHeightField                          matlab.ui.control.NumericEditField
+        ReceiverHeightField                        matlab.ui.control.NumericEditField
+        GroundFactorField                          matlab.ui.control.NumericEditField
+        DirectivityField                           matlab.ui.control.NumericEditField
+        ToleranceField                             matlab.ui.control.NumericEditField
+        FitLwCheckBox                              matlab.ui.control.CheckBox
+        FitGCheckBox                               matlab.ui.control.CheckBox
+        SolverDropDown                             matlab.ui.control.DropDown
+        FitModelButton                             matlab.ui.control.Button
+        FitResultsLabel                            matlab.ui.control.Label
         DistanceAxes                        matlab.ui.control.UIAxes
+        ResidualsAxes                       matlab.ui.control.UIAxes
 
         SummaryTab                     matlab.ui.container.Tab
         SummaryGrid                      matlab.ui.container.GridLayout
@@ -85,6 +101,7 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             'Status', {}, 'Results', {})
         SelectedMicIndex double = 0
         Player = []
+        FitResult = [] % result struct from noiseanalyzer.fitSourceLevelAndGroundFactor, or [] until Fit Model is run
     end
 
     methods (Access = private)
@@ -133,6 +150,34 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             if isfield(s, 'AggregationMethod') && lower(s.AggregationMethod) == "max"
                 method = "max";
             end
+        end
+
+        function s = getPropagationSettings(app)
+            % Gathers the Propagation Model panel into the Name-Value options
+            % noiseanalyzer.predictedSoundPressureLevel / fitSourceLevelAndGroundFactor expect.
+            s = struct();
+            s.TemperatureC = app.TemperatureField.Value;
+            s.RelativeHumidityPct = app.HumidityField.Value;
+            s.PressureKPa = app.PressureField.Value;
+            s.hs = app.SourceHeightField.Value;
+            s.hr = app.ReceiverHeightField.Value;
+            s.FixedG = app.GroundFactorField.Value;
+            s.Dc = app.DirectivityField.Value;
+            s.Tolerance = app.ToleranceField.Value;
+            s.FitLw = app.FitLwCheckBox.Value;
+            s.FitG = app.FitGCheckBox.Value;
+            s.Solver = app.SolverDropDown.Value;
+        end
+
+        function refreshFitResultsLabel(app)
+            if isempty(app.FitResult)
+                app.FitResultsLabel.Text = 'No fit yet -- set the propagation parameters above and click Fit Model.';
+                return
+            end
+            r = app.FitResult;
+            app.FitResultsLabel.Text = sprintf( ...
+                'Fitted Lw = %.1f dB   |   Fitted ground factor G = %.2f   |   RMSE = %.2f dB   |   R^2 = %.3f   |   solver = %s (exitflag %d)', ...
+                r.LwFit, r.GFit, r.RMSE, r.R2, r.solverUsed, r.exitflag);
         end
 
         function setBusy(app, text)
@@ -263,6 +308,21 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             grid(app.SpectrumAxes, 'on');
         end
 
+        function [groupedDistance, groupedLevel] = getGroupedLAeq(app)
+            % Included, analyzed mics' LAeq grouped by distance (noiseanalyzer.groupLevelsByDistance)
+            % -- the data both Fit Model and the residuals plot operate on.
+            T = app.buildResultsTable();
+            hasResult = T.Include & ~isnan(T.LAeq_dB);
+            groupedDistance = [];
+            groupedLevel = [];
+            if ~any(hasResult)
+                return
+            end
+            [groupedDistance, groupedLevel] = noiseanalyzer.groupLevelsByDistance( ...
+                T.Distance_m(hasResult), T.LAeq_dB(hasResult), app.getAggregationMethod(), ...
+                app.ToleranceField.Value);
+        end
+
         function plotDistance(app)
             cla(app.DistanceAxes);
             metric = app.DistanceMetricDropDown.Value;
@@ -277,16 +337,23 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             hold(app.DistanceAxes, 'on');
             if any(incl)
                 scatter(app.DistanceAxes, T.Distance_m(incl), T.(field)(incl), 60, ...
-                    [0.2 0.4 0.7], 'filled', 'DisplayName', 'Included');
+                    [0.2 0.4 0.7], 'filled', 'DisplayName', 'Included (per mic)');
             end
             if any(~incl)
                 scatter(app.DistanceAxes, T.Distance_m(~incl), T.(field)(~incl), 60, ...
                     [0.6 0.6 0.6], 'DisplayName', 'Excluded');
             end
             if any(incl)
-                aggVal = noiseanalyzer.aggregateLevels(T.(field)(incl), app.getAggregationMethod());
-                yline(app.DistanceAxes, aggVal, '--', sprintf('%s (%s) = %.1f dB', metric, ...
-                    app.getAggregationMethod(), aggVal), 'Color', [0.8 0.3 0.1]);
+                [groupedDistance, groupedLevel] = noiseanalyzer.groupLevelsByDistance( ...
+                    T.Distance_m(incl), T.(field)(incl), app.getAggregationMethod(), app.ToleranceField.Value);
+                plot(app.DistanceAxes, groupedDistance, groupedLevel, 'd-', 'Color', [0.8 0.3 0.1], ...
+                    'MarkerFaceColor', [0.8 0.3 0.1], 'LineWidth', 1.5, ...
+                    'DisplayName', sprintf('%s (%s) per distance', metric, app.getAggregationMethod()));
+            end
+            if ~isempty(app.FitResult) && metric == "LAeq"
+                c = app.FitResult.predictedCurve;
+                plot(app.DistanceAxes, c.Distance, c.Level, '-', 'Color', [0.2 0.6 0.2], ...
+                    'LineWidth', 1.5, 'DisplayName', 'Fitted ISO 9613-2 model');
             end
             hold(app.DistanceAxes, 'off');
             xlabel(app.DistanceAxes, 'Distance from source (m)');
@@ -296,12 +363,35 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             grid(app.DistanceAxes, 'on');
         end
 
+        function plotResiduals(app)
+            cla(app.ResidualsAxes);
+            if isempty(app.FitResult)
+                return
+            end
+            [groupedDistance, ~] = app.getGroupedLAeq();
+            r = app.FitResult.residuals(:);
+            if numel(r) ~= numel(groupedDistance)
+                % Mic selection/settings changed since the last fit -- stale, skip rather than
+                % plot mismatched data; re-run Fit Model to refresh.
+                return
+            end
+            stem(app.ResidualsAxes, groupedDistance, r, 'filled', 'Color', [0.6 0.2 0.6]);
+            hold(app.ResidualsAxes, 'on');
+            yline(app.ResidualsAxes, 0, 'k--');
+            hold(app.ResidualsAxes, 'off');
+            xlabel(app.ResidualsAxes, 'Distance from source (m)');
+            ylabel(app.ResidualsAxes, 'Measured - predicted (dB)');
+            title(app.ResidualsAxes, 'Fit residuals (LAeq)');
+            grid(app.ResidualsAxes, 'on');
+        end
+
         function refreshAll(app)
             app.refreshMicTable();
             app.plotWaveform();
             app.plotLevel();
             app.plotSpectrum();
             app.plotDistance();
+            app.plotResiduals();
             app.refreshSummaryTable();
         end
 
@@ -496,6 +586,13 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
                             fullfile(outFolder, app.Mics(i).Label + "_timeseries.csv"));
                     end
                 end
+                if ~isempty(app.FitResult)
+                    [groupedDistance, groupedLevel] = app.getGroupedLAeq();
+                    if numel(groupedDistance) == numel(app.FitResult.residuals)
+                        noiseanalyzer.writePropagationFitCsv(groupedDistance, groupedLevel, ...
+                            app.FitResult, fullfile(outFolder, "propagation_fit.csv"));
+                    end
+                end
             catch ME
                 app.setDone('Export failed.');
                 uialert(app.UIFigure, ME.message, 'Export failed');
@@ -541,6 +638,45 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
 
         function DistanceMetricChanged(app, ~)
             app.plotDistance();
+            app.plotResiduals();
+        end
+
+        function FitModelButtonPushed(app, ~)
+            if app.DistanceMetricDropDown.Value ~= "LAeq"
+                uialert(app.UIFigure, ...
+                    'Model fitting currently supports the LAeq metric only (it needs an A-weighted level to compare against ISO 9613-2). Switch the Distance Analysis metric to LAeq first.', ...
+                    'Cannot fit');
+                return
+            end
+            [groupedDistance, groupedLevel] = app.getGroupedLAeq();
+            if numel(groupedDistance) < 2
+                uialert(app.UIFigure, ...
+                    'Need at least 2 included, analyzed microphones at different distances.', 'Cannot fit');
+                return
+            end
+            s = app.getPropagationSettings();
+            targets = string.empty;
+            if s.FitLw, targets(end+1) = "Lw"; end
+            if s.FitG, targets(end+1) = "G"; end
+            if isempty(targets)
+                uialert(app.UIFigure, 'Select at least one of Fit Lw / Fit G.', 'Cannot fit');
+                return
+            end
+            app.setBusy('Fitting propagation model...');
+            try
+                app.FitResult = noiseanalyzer.fitSourceLevelAndGroundFactor(groupedDistance, groupedLevel, ...
+                    'TemperatureC', s.TemperatureC, 'RelativeHumidityPct', s.RelativeHumidityPct, ...
+                    'PressureKPa', s.PressureKPa, 'hs', s.hs, 'hr', s.hr, 'Dc', s.Dc, ...
+                    'FitTargets', targets, 'FixedG', s.FixedG, 'Solver', s.Solver);
+            catch ME
+                app.setDone('Fit failed.');
+                uialert(app.UIFigure, ME.message, 'Fit failed');
+                return
+            end
+            app.setDone('Fit complete.');
+            app.refreshFitResultsLabel();
+            app.plotDistance();
+            app.plotResiduals();
         end
 
     end
@@ -659,15 +795,61 @@ classdef NoiseAnalyzerApp < matlab.apps.AppBase
             app.SpectrumAxes = uiaxes(app.SpectrumGrid);
 
             app.DistanceTab = uitab(app.TabGroup, 'Title', 'Distance Analysis');
-            app.DistanceGrid = uigridlayout(app.DistanceTab, [2 1]);
-            app.DistanceGrid.RowHeight = {30, '1x'};
+            app.DistanceGrid = uigridlayout(app.DistanceTab, [4 1]);
+            app.DistanceGrid.RowHeight = {30, 190, '1.6x', '0.8x'};
             app.DistanceMetricDropDown = uidropdown(app.DistanceGrid, ...
                 'Items', {'LAeq','LCeq','LZeq','LAFmax','LASmax','LA10','LA50','LA90'}, ...
                 'Value', 'LAeq', ...
                 'ValueChangedFcn', @(~, e) app.DistanceMetricChanged(e));
             app.DistanceMetricDropDown.Layout.Row = 1;
+
+            % --- Propagation model panel: predicts Lp(d) from ISO 9613-2 (geometric spreading +
+            % atmospheric absorption + ground effect, noiseanalyzer.predictedSoundPressureLevel)
+            % and fits the unknown source power level Lw and/or ground factor G to the measured
+            % multi-mic LAeq-vs-distance data (noiseanalyzer.fitSourceLevelAndGroundFactor).
+            app.PropagationPanel = uipanel(app.DistanceGrid, 'Title', 'Propagation model (ISO 9613-2)');
+            app.PropagationPanel.Layout.Row = 2;
+            app.PropagationGrid = uigridlayout(app.PropagationPanel, [5 6]);
+            app.PropagationGrid.RowHeight = {26, 26, 26, 30, 40};
+
+            uilabel(app.PropagationGrid, 'Text', 'Temp (C):');
+            app.TemperatureField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 15);
+            uilabel(app.PropagationGrid, 'Text', 'RH (%):');
+            app.HumidityField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 70);
+            uilabel(app.PropagationGrid, 'Text', 'Pressure (kPa):');
+            app.PressureField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 101.325);
+
+            uilabel(app.PropagationGrid, 'Text', 'Source height hs (m):');
+            app.SourceHeightField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 1.5);
+            uilabel(app.PropagationGrid, 'Text', 'Receiver height hr (m):');
+            app.ReceiverHeightField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 1.5);
+            uilabel(app.PropagationGrid, 'Text', 'Ground factor G [0=hard,1=porous]:');
+            app.GroundFactorField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 0.5, ...
+                'Limits', [0 1]);
+
+            uilabel(app.PropagationGrid, 'Text', 'Directivity Dc (dB, fixed):');
+            app.DirectivityField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 0);
+            app.FitLwCheckBox = uicheckbox(app.PropagationGrid, 'Text', 'Fit Lw', 'Value', true);
+            app.FitGCheckBox = uicheckbox(app.PropagationGrid, 'Text', 'Fit G', 'Value', true);
+            uilabel(app.PropagationGrid, 'Text', 'Grouping tolerance (m):');
+            app.ToleranceField = uieditfield(app.PropagationGrid, 'numeric', 'Value', 0.5);
+
+            uilabel(app.PropagationGrid, 'Text', 'Solver:');
+            app.SolverDropDown = uidropdown(app.PropagationGrid, ...
+                'Items', {'lsqnonlin','fminsearch','fmincon','ga','particleswarm'}, 'Value', 'lsqnonlin');
+            app.FitModelButton = uibutton(app.PropagationGrid, 'Text', 'Fit Model', ...
+                'BackgroundColor', [0.2 0.5 0.7], 'FontColor', [1 1 1], 'FontWeight', 'bold', ...
+                'ButtonPushedFcn', @(~, e) app.FitModelButtonPushed(e));
+
+            app.FitResultsLabel = uilabel(app.PropagationGrid, 'Text', 'No fit yet.', 'WordWrap', 'on');
+            app.FitResultsLabel.Layout.Row = 5;
+            app.FitResultsLabel.Layout.Column = [1 6];
+
             app.DistanceAxes = uiaxes(app.DistanceGrid);
-            app.DistanceAxes.Layout.Row = 2;
+            app.DistanceAxes.Layout.Row = 3;
+
+            app.ResidualsAxes = uiaxes(app.DistanceGrid);
+            app.ResidualsAxes.Layout.Row = 4;
 
             app.SummaryTab = uitab(app.TabGroup, 'Title', 'Summary');
             app.SummaryGrid = uigridlayout(app.SummaryTab, [1 1]);

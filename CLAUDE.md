@@ -411,6 +411,114 @@ machine. The building blocks each callback depends on (data loading, analysis, a
 specific graphics/table calls used) are all independently verified above; the callback wiring
 itself follows the same pattern already proven to work in the first app version.
 
+## Source power estimation, attenuation prediction, and parameter fitting (2026-09-16)
+
+Per your request to (1) back-calculate a sound source's power level and model distance
+attenuation from multi-microphone/multi-radius measurements, (2) compare the theoretical
+attenuation curve to the real measured attenuation, and (3) optimize/fit unknown parameters
+(chiefly ground hardness) against the data -- extending `app/NoiseAnalyzerApp.m` in place, staying
+100% MATLAB (no separate web app, no `uihtml` rewrite, per your explicit instruction).
+
+Before this, the ISO 9613-2 propagation chain was a complete set of separate building blocks
+(`geometricalDivergence`, `atmosphericAttenuationCoefficient`/`atmosphericAttenuation`,
+`groundAttenuation`/`groundAttenuationSimplified`, `meteorologicalCorrection`,
+`pointSourceOctaveBandLevel`, `aWeightedSoundPressureLevel`) but nothing (a) inverted a measured
+level back to a source power level, (b) orchestrated the terms into one forward "predicted level
+at distance" call, or (c) fit any parameter to data -- confirmed by grep, zero hits for
+fit/optim/invert/predict anywhere in the package before this pass.
+
+**New functions in `matlab/+noiseanalyzer/`:**
+- `invertSourcePowerLevel.m` -- exact algebraic inverse of `pointSourceOctaveBandLevel`
+  (`Lw = Lp - Dc + A`).
+- `estimateSourcePowerLevelFromMeasurement.m` -- practical overall-dB(A) Lw estimate from a single
+  LAeq measurement plus an assumed relative octave-band spectrum shape (default flat); exact given
+  the shape assumption (the A-weighted combination is a log-sum-exp that factors linearly in the
+  unknown overall level), not an optimization.
+- `predictedSoundPressureLevel.m` -- the forward orchestration function that was missing: raw
+  physical inputs (Lw, distance, temperature/RH/pressure, heights, ground factor(s), Dc, C0) in,
+  predicted per-band and overall dB(A) level out, internally calling the existing building blocks.
+  Ground path length `dp` is computed as the horizontal projection
+  `sqrt(max(d^2-(hs-hr)^2,0))` rather than assumed equal to the direct distance `d`.
+- `groupLevelsByDistance.m` -- tolerance-based clustering of mic distances (several mics at "the
+  same" radius) with per-group mean/max via the existing `aggregateLevels` -- `aggregateLevels`
+  itself only ever collapsed *all* mics into one number, with no per-distance grouping.
+- `simulateMultiMicMeasurement.m` -- synthetic multi-mic ground-truth generator (built on
+  `predictedSoundPressureLevel`, optional Gaussian noise) -- since no real experimental multi-mic
+  dataset exists yet, this is what makes the fitting engine testable/demonstrable at all.
+- `fitSourceLevelAndGroundFactor.m` -- the actual optimizer: nonlinear least-squares (residual =
+  predicted - measured across distances) over selectable free parameters (`Lw` and/or ground
+  factor `G`, default both), bounded via `lsqnonlin` (Optimization Toolbox, licensed on this
+  machine) with automatic fallback to base-MATLAB `fminsearch` if that toolbox isn't licensed;
+  `fmincon`/`ga`/`particleswarm` (Global Optimization Toolbox, also licensed here) selectable for
+  global-search robustness checks. 95% CIs via `nlparci` when Statistics Toolbox + `lsqnonlin` +
+  enough degrees of freedom. Ground factor fit as a single lumped G (applied to Gs/Gr/Gm alike) by
+  default, to keep a typically-sparse multi-radius fit well-conditioned; directivity Dc and
+  meteorological C0 are fixed inputs, not fit targets (not identifiable from a single-azimuth
+  snapshot dataset).
+- `writePropagationFitCsv.m` -- export, matching `writeMultiMicSummaryCsv.m`'s style.
+
+**App (`app/NoiseAnalyzerApp.m`) changes:** new "Propagation model" panel on the Distance Analysis
+tab (temperature/RH/pressure, source/receiver height, ground factor G, directivity Dc, Fit-Lw/
+Fit-G checkboxes, solver dropdown, distance-grouping tolerance, Fit Model button + results label),
+`getPropagationSettings`/`FitModelButtonPushed`/`refreshFitResultsLabel`/`getGroupedLAeq` methods,
+`plotDistance` reworked to show per-distance-group aggregate markers (via `groupLevelsByDistance`,
+replacing the old single cross-distance flat line) plus the fitted curve overlay, new
+`plotResiduals` on a new residuals axes, export extended to also write `propagation_fit.csv`/
+`propagation_fit_parameters.csv` when a fit exists. Fitting is restricted to the LAeq metric (the
+one metric that's a real A-weighted level, vs. the FFT spectrum estimate everything else would
+need).
+
+**New `tests/` folder** (none existed before this): `matlab.unittest` classdef tests --
+`PropagationInversionTest`, `PredictedSoundPressureLevelTest` (pins the forward model to the
+already-verified 57.34 dB worked example), `GroupLevelsByDistanceTest`,
+`SimulateMultiMicMeasurementTest`, `FitSourceLevelAndGroundFactorTest` (the key one: recovers
+known Lw/G from noise-free synthetic data, exactly, across `lsqnonlin`/`fminsearch`/
+`particleswarm`). `runAllTests.m` adds `matlab/` to path and asserts full success.
+
+**Bugs caught and fixed during this pass:**
+1. `fitSourceLevelAndGroundFactor.m`'s `arguments` block originally defaulted
+   `opts.SpectrumShapeDb` to `zeros(1, numel(opts.Freq))` -- MATLAB rejects a Name-Value argument's
+   default expression referencing another Name-Value argument ("Use of name-value arguments in
+   default values is not supported"). Fixed by defaulting from
+   `noiseanalyzer.iso9613OctaveBands()` directly instead of `opts.Freq`.
+2. `groupLevelsByDistance.m`'s final re-sort-and-remap step had a shape bug (`remap(order) = ...;
+   groupIndex = remap(groupIndex)';` -- the trailing transpose flipped a column vector to a row,
+   inconsistent with the function's own column-vector contract). Fixed by preallocating `remap` as
+   a column vector and dropping the transpose.
+3. A test (`globalOptimizationSolversRecoverParameters`) initially gated on
+   `license('test','GADS_Toolbox')`, which returned **false** specifically when evaluated inside a
+   `matlab.unittest` test method on this machine, even though the toolbox is installed and
+   licensed (confirmed via `ver` -- Global Optimization Toolbox 4.6 -- and via the same license
+   check succeeding when run standalone, outside the test framework). Not fully root-caused; fixed
+   pragmatically by gating on `~isempty(which('particleswarm'))` (function availability) instead
+   of the license string, which is robust in both contexts.
+
+**Verification:**
+- Full suite: **21/21 passed, 0 failed, 0 incomplete** (`matlab -batch`, R2021b), including the
+  particleswarm/Global Optimization Toolbox path.
+- `checkcode`: clean on all 7 new files and the modified app file (two stale `%#ok` suppressions
+  removed once the analyzer stopped flagging those lines).
+- App instantiates cleanly with the new panel (`NoiseAnalyzerApp()` -> valid, visible `UIFigure`).
+- `docs/PhysicsAndFittingGuide.m` (the new interactive-document source, see below) runs end-to-end
+  with no errors and reproduces the 57.34 dB worked example and an exact (noise-free logic aside)
+  Lw round-trip; its illustrative noisy synthetic fit recovered Lw=105.4 vs. true 105.0 and
+  G=0.82 vs. true 0.65 (RMSE 0.39 dB) -- reasonable given injected 0.5 dB measurement noise on only
+  5 points, and all three solvers (`lsqnonlin`/`fminsearch`/`particleswarm`) agreed with each
+  other exactly.
+- **Not verified:** actual interactive use of the new panel (same documented limitation as the
+  rest of the app -- needs a human at the machine); real experimental multi-mic data (none exists
+  yet, so end-to-end validity against a real experiment is unconfirmed beyond the synthetic and
+  literature-based checks).
+
+**Interactive document:** `docs/PhysicsAndFittingGuide.m` -- authored as a plain `.m` file with
+`%%` cell breaks (per your request for something explaining "all of the equations and physics ...
+with equations, plots, and explanation"), covering SPL fundamentals, A-weighting, each ISO 9613-2
+term with a live plot, the new inversion/forward/fitting functions with worked examples, and a
+solver comparison -- every number/plot comes from calling the real `noiseanalyzer.*` functions, not
+a separately-derived copy of the physics. Convert to a Live Script (`.mlx`) via MATLAB's Live
+Editor Save-As for the fully interactive version; kept as `.m` in git since `.mlx` is a binary
+format.
+
 ## Next moves
 
 1. ISO 9613-2 core method (clauses 6-8) is done, verified, and now targets the **current 2024
@@ -424,5 +532,14 @@ itself follows the same pattern already proven to work in the first app version.
 3. ISO 1996-2:2017 tonal-adjustment/assessment logic — build from the 2017 text, using
    `reference/iso_1996_2_2007.py`'s tone-seek approach (6 dB pause / 3 dB bandwidth criteria) only
    as a starting point, not as verified-correct (same reference-code-may-be-wrong lesson as above).
-4. Build the `uihtml`-based GUI (skills installed) once there's a live signal path — level meter
-   (A/C/Z, Fast/Slow) + octave-band bar spectrum — to display.
+4. `uihtml`-based GUI is no longer the plan — per your explicit instruction (2026-09-16), the app
+   stays a plain MATLAB `uifigure` app; the multi-mic source-power/fitting work above was built as
+   an extension of `NoiseAnalyzerApp.m` itself, not a new front end.
+5. Convert `docs/PhysicsAndFittingGuide.m` to an actual `.mlx` Live Script (needs a MATLAB Live
+   Editor session, not something this tool-driven session can produce directly since `.mlx` is a
+   binary zip format).
+6. Get a real multi-microphone experimental dataset and re-validate the fitting engine against it
+   — everything so far is synthetic-ground-truth + literature-comparison validated, not yet
+   confirmed against an actual field measurement.
+7. Consider exposing separate Gs/Gr/Gm and per-octave-band fitting in the GUI if real data shows
+   the lumped-G/LAeq-only defaults aren't sufficient (see README roadmap).

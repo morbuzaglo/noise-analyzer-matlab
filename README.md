@@ -19,6 +19,16 @@ octave-band filterbank not yet built. See [Roadmap](#roadmap).
   diffraction (single and multi-edge), and meteorological correction, per **ISO 9613-2:2024**
   (current edition) — plus its informative Annex D deviations specifically for wind-turbine
   sources (ground-factor cap, barrier-attenuation cap, concave-terrain correction).
+- **Source power estimation & attenuation fitting** — from multi-microphone measurements at
+  several distances (including several mics sharing a radius), back-calculate the sound source's
+  power level, predict the full ISO 9613-2 level-vs-distance curve (geometric spreading +
+  atmospheric absorption + ground effect combined in one call), and fit unknown parameters —
+  source power level and/or ground hardness — by nonlinear least-squares against the real
+  measured attenuation, with a synthetic-data validation path since no calibrated multi-mic
+  parameter is assumed known in advance. See
+  [`docs/PhysicsAndFittingGuide.m`](docs/PhysicsAndFittingGuide.m) for the full derivation and
+  worked examples, and [`reference/literature_case_studies.md`](reference/literature_case_studies.md)
+  for validation against published outdoor-propagation data.
 
 ## Why this exists
 
@@ -56,16 +66,27 @@ numbers wherever the standard publishes any — not just "it runs without errori
 matlab/+noiseanalyzer/   MATLAB package — all the actual functions (one function per file,
                          named after what it computes, docstring cites the standard clause/
                          equation number it implements)
+app/                     NoiseAnalyzerApp.m — the interactive GUI (see below)
+tests/                   matlab.unittest test suite (runAllTests.m runs everything)
+docs/                    PhysicsAndFittingGuide.m — interactive equations/physics walkthrough
+                         (author as .m, convert to a Live Script .mlx for interactive use)
 reference/               Formulas and cross-reference material used while building this
-                         (see reference/README.md for what's here and what isn't, and why)
+                         (see reference/README.md for what's here and what isn't, and why),
+                         plus literature_case_studies.md (published-data validation)
 CLAUDE.md                Working notes: design decisions, verification results, open items
 ```
 
 ## Requirements
 
-- MATLAB (developed/tested on R2021b). No toolboxes required — deliberately: this was built on a
-  machine without Signal Processing Toolbox, so the one thing that toolbox would normally provide
-  (`bilinear`) is implemented from scratch in `bilinearTransform.m`.
+- MATLAB (developed/tested on R2021b). No toolboxes required for the core acoustics/GUI
+  functionality — deliberately: this was built on a machine without Signal Processing Toolbox, so
+  the one thing that toolbox would normally provide (`bilinear`) is implemented from scratch in
+  `bilinearTransform.m`.
+- The source-power/ground-factor **fitting** feature uses Optimization Toolbox (`lsqnonlin`) by
+  default, but automatically falls back to base-MATLAB `fminsearch` if that toolbox isn't
+  licensed; `fmincon`/`ga`/`particleswarm` (Optimization / Global Optimization Toolbox) are
+  available as alternative solvers but not required. 95% confidence intervals on the fit use
+  Statistics and Machine Learning Toolbox when available, and are omitted (not estimated) if not.
 
 ## GUI app
 
@@ -99,12 +120,19 @@ app = NoiseAnalyzerApp;
   octave-band spectrum estimate (labeled as an estimate — the true IEC 61260-1 filterbank isn't
   built yet, see Roadmap) for every loaded microphone's trimmed segment. A status lamp shows
   busy (amber) vs. done (green) so you know when it's safe to continue.
-- **Distance Analysis tab** — plot any metric vs. distance across included microphones, with the
-  aggregate (energetic mean, or max) drawn as a reference line — this is the actual point of the
-  multi-mic support: seeing how the measured level falls off with distance.
+- **Distance Analysis tab** — plot any metric vs. distance across included microphones, with
+  per-distance-group aggregate markers (energetic mean, or max, grouped by a configurable
+  distance tolerance) showing how the measured level falls off with distance. A **Propagation
+  model** panel lets you set temperature/humidity/pressure, source/receiver height, ground factor
+  and directivity, choose which of source power level (Lw) / ground factor (G) to fit (or hold
+  fixed), pick a solver (`lsqnonlin` by default, with `fminsearch`/`fmincon`/`ga`/`particleswarm`
+  also available), and click **Fit Model** to overlay the fitted ISO 9613-2 curve on the measured
+  data plus a residuals plot (fitting works on the LAeq metric).
 - **Export Summary + CSVs** — one combined `noise_analysis_summary.csv` (every microphone's
-  metrics plus distance and include-flag, with an aggregate row appended) and a per-microphone
-  `<label>_timeseries.csv` (Fast A-weighted level vs. time).
+  metrics plus distance and include-flag, with an aggregate row appended), a per-microphone
+  `<label>_timeseries.csv` (Fast A-weighted level vs. time), and, once a model has been fit,
+  `propagation_fit.csv` (measured/predicted/residual per distance group) plus
+  `propagation_fit_parameters.csv` (fitted Lw, G, RMSE, R², solver).
 
 Written as a `uifigure`-based `classdef` app (the same object model App Designer itself generates)
 rather than a packaged `.mlapp` binary, so it stays readable and diffable in source control. All
@@ -148,6 +176,23 @@ Agr   = noiseanalyzer.groundAttenuation(bands, 0, 0, 0, 4, 1.5, 100);    % hard 
 Lw    = 100 * ones(1, numel(bands));                 % 100 dB source power, all bands
 Lp    = noiseanalyzer.pointSourceOctaveBandLevel(Lw, 0, Adiv, Aatm, Agr);
 LAT   = noiseanalyzer.aWeightedSoundPressureLevel(Lp, bands);
+
+% Same scenario, one call (new): predict overall level at a distance directly
+LAT2  = noiseanalyzer.predictedSoundPressureLevel(Lw, 100, 'TemperatureC', 20, ...
+    'RelativeHumidityPct', 70, 'Gs', 0, 'Gr', 0, 'Gm', 0, 'hs', 4, 'hr', 1.5); % == LAT
+
+% Fit an unknown source power level + ground factor to multi-mic measurements
+distances = [10; 20; 40; 80; 160];
+measuredLAeq = [95.2; 87.1; 78.6; 69.4; 60.9]; % one LAeq per distance (or per group, see below)
+fit = noiseanalyzer.fitSourceLevelAndGroundFactor(distances, measuredLAeq);
+fprintf('Fitted Lw=%.1f dB, G=%.2f (RMSE=%.2f dB)\n', fit.LwFit, fit.GFit, fit.RMSE);
+```
+
+## Tests
+
+```matlab
+addpath('tests');
+runAllTests();  % matlab.unittest suite: propagation, inversion, and fit-recovery checks
 ```
 
 ## Roadmap
@@ -170,6 +215,14 @@ LAT   = noiseanalyzer.aWeightedSoundPressureLevel(Lp, bands);
 - [x] Multi-microphone support: distance tracking, include/exclude, mean/max aggregation,
       level-vs-distance plot, time-range trimming, playback, busy/done status, CSV settings
       and output
+- [x] Source power level estimation, forward ISO 9613-2 distance-attenuation prediction, and
+      nonlinear fitting of source power / ground factor to multi-mic data, wired into the
+      Distance Analysis tab with fitted-curve overlay + residuals plot
+- [ ] Separate Gs/Gr/Gm (source/receiver/middle-region ground factor) as an advanced fitting
+      option in the GUI — the underlying functions support it, only the app UI currently exposes
+      a single lumped G to keep a typically-sparse multi-radius fit well-conditioned
+- [ ] Per-octave-band fitting (needs a calibrated octave-band spectrum; the app's current
+      spectrum tab is an FFT-based estimate, see above) — fitting currently works on overall LAeq
 - [ ] Live/real-time level meter (the current GUI analyzes a loaded recording, not a live feed)
 - [ ] Mouse-draggable trim selection (needs Image Processing Toolbox, not available here — see
       the GUI app section above for the numeric-field alternative actually used)
